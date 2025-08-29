@@ -1,0 +1,63 @@
+# Configuration files with sensitive data
+config.json
+config.yaml
+config.yml
+*.config
+
+# Credentials and secrets
+.env
+.env.local
+credentials.json
+secrets.json
+*_credentials.json
+
+# ServiceNow specific
+oauth_token.json
+token.json
+
+# Output files
+*.csv
+*.log
+report_*.txt
+summary_*.txt
+CVE-*.txt
+vuln_count_*.json
+vulnerable_systems_*.json
+affected_systems_*.csv
+report_*.txt
+summary_*.txt
+*_report_*.txt
+*_systems_*.csv
+*_data_*.json
+data_population_analysis_*.json
+populated_cve_fields_*.csv
+table_analysis_*.json
+nvd_table_exploration_*.json
+cve_search_*.json
+cve_batch_search_*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
