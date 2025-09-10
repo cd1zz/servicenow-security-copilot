@@ -1,0 +1,23 @@
+.git*
+.vscode
+__azurite_db*__.json
+__blobstorage__
+__queuestorage__
+local.settings.json
+test
+.venv
+*.pyc
+.python_packages
+
+# Output files with sensitive data
+*.csv
+*.log
+status_search_*.csv
+status_search_*.json
+status_search_*.txt
+*_vulnerabilities.csv
+*_systems.csv
+*_report.txt
+*_report_*.txt
+report_*.txt
+summary_*.txt

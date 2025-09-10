@@ -29,6 +29,12 @@ summary_*.txt
 *_report_*.txt
 *_systems_*.csv
 *_data_*.json
+# Status search outputs with sensitive data
+status_search_*.csv
+status_search_*.json
+status_search_*.txt
+*_vulnerabilities.csv
+*_systems.csv
 data_population_analysis_*.json
 populated_cve_fields_*.csv
 table_analysis_*.json
@@ -48,7 +54,7 @@ ENV/
 .venv
 
 # IDE
-.vscode/
+
 .idea/
 *.swp
 *.swo

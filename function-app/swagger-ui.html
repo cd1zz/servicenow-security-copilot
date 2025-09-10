@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ServiceNow Vulnerability Analyzer API Documentation</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            font-weight: 600;
+        }
+        .header p {
+            margin: 0.5rem 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+        .info-banner {
+            background: #f0f4f8;
+            border-left: 4px solid #4299e1;
+            padding: 1rem 2rem;
+            margin: 2rem;
+            border-radius: 0.25rem;
+        }
+        .info-banner h3 {
+            margin: 0 0 0.5rem 0;
+            color: #2d3748;
+        }
+        .info-banner p {
+            margin: 0.25rem 0;
+            color: #4a5568;
+        }
+        .info-banner code {
+            background: #e2e8f0;
+            padding: 0.125rem 0.25rem;
+            border-radius: 0.125rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+        #swagger-ui {
+            margin: 2rem;
+        }
+        .examples-section {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin: 2rem;
+        }
+        .examples-section h3 {
+            margin-top: 0;
+            color: #2d3748;
+        }
+        .example-code {
+            background: #1a202c;
+            color: #e2e8f0;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+        .example-code pre {
+            margin: 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>ServiceNow Vulnerability Analyzer API</h1>
+        <p>Azure Functions API for vulnerability analysis and software inventory management</p>
+    </div>
+
+    <div class="info-banner">
+        <h3>🚀 Quick Start</h3>
+        <p><strong>Base URL:</strong> <code>http://localhost:7071/api</code> (Local) or <code>https://your-function-app.azurewebsites.net/api</code> (Azure)</p>
+        <p><strong>Authentication:</strong> Include API key in header: <code>X-API-Key: your-api-key</code></p>
+        <p><strong>Content-Type:</strong> All requests must use <code>application/json</code></p>
+    </div>
+
+    <div class="examples-section">
+        <h3>📝 Example Requests</h3>
+        
+        <h4>Analyze a CVE:</h4>
+        <div class="example-code">
+            <pre>curl -X POST http://localhost:7071/api/analyze-vulnerability \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "vuln_id": "CVE-2024-1234",
+    "fetch_all_details": false,
+    "confirmation_state": "confirmed"
+  }'</pre>
+        </div>
+
+        <h4>Search Software by Manufacturer:</h4>
+        <div class="example-code">
+            <pre>curl -X POST http://localhost:7071/api/software-inventory \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "search_type": "manufacturer",
+    "manufacturer": "Palo Alto Networks",
+    "fetch_details": true
+  }'</pre>
+        </div>
+
+        <h4>Batch Analyze Multiple Vulnerabilities:</h4>
+        <div class="example-code">
+            <pre>curl -X POST http://localhost:7071/api/batch-analyze \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "vuln_ids": ["CVE-2024-1234", "CVE-2024-5678", "QID-110504"],
+    "parallel": true
+  }'</pre>
+        </div>
+    </div>
+
+    <div id="swagger-ui"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {
+            // Initialize Swagger UI
+            const ui = SwaggerUIBundle({
+                url: "openapi.yaml",  // Path to your OpenAPI spec
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                docExpansion: "list",
+                filter: true,
+                showCommonExtensions: true,
+                onComplete: function() {
+                    // Custom initialization after Swagger UI loads
+                    console.log("Swagger UI loaded successfully");
+                }
+            });
+
+            window.ui = ui;
+        };
+    </script>
+</body>
+</html>
