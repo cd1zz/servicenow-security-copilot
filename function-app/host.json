@@ -4,23 +4,51 @@
     "applicationInsights": {
       "samplingSettings": {
         "isEnabled": true,
-        "excludedTypes": "Request"
-      }
+        "excludedTypes": "Request",
+        "maxTelemetryItemsPerSecond": 20
+      },
+      "enableLiveMetricsFilters": true,
+      "enableDependencyTracking": true,
+      "enablePerformanceCountersCollection": true
     },
     "logLevel": {
       "default": "Information",
       "Host.Results": "Information",
       "Function": "Information",
-      "Host.Aggregator": "Trace"
-    }
+      "Host.Aggregator": "Information",
+      "services": "Debug",
+      "analyze-vulnerability": "Debug",
+      "batch-analyze": "Debug",
+      "status-search": "Debug",
+      "software-inventory": "Debug"
+    },
+    "console": {
+      "isEnabled": true
+    },
+    "fileLoggingMode": "always"
   },
   "extensions": {
     "http": {
       "routePrefix": "api",
       "maxOutstandingRequests": 200,
       "maxConcurrentRequests": 100,
-      "dynamicThrottlesEnabled": true
+      "dynamicThrottlesEnabled": true,
+      "hsts": {
+        "isEnabled": false
+      }
     }
   },
-  "functionTimeout": "00:10:00"
+  "functionTimeout": "00:10:00",
+  "healthMonitor": {
+    "enabled": true,
+    "healthCheckInterval": "00:00:10",
+    "healthCheckWindow": "00:02:00",
+    "healthCheckThreshold": 6,
+    "counterThreshold": 0.80
+  },
+  "retry": {
+    "strategy": "fixedDelay",
+    "maxRetryCount": 3,
+    "delayInterval": "00:00:05"
+  }
 }

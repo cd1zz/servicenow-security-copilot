@@ -1,0 +1,33 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "FUNCTIONS_EXTENSION_VERSION": "~4",
+    "API_KEY": "your-api-key-here",
+    "SERVICENOW_INSTANCE_URL": "https://your-instance.service-now.com",
+    "SERVICENOW_CLIENT_ID": "your-client-id",
+    "SERVICENOW_CLIENT_SECRET": "your-client-secret",
+    "SERVICENOW_USERNAME": "your-username",
+    "SERVICENOW_PASSWORD": "your-password",
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=your-instrumentation-key;IngestionEndpoint=https://region.in.applicationinsights.azure.com/;LiveEndpoint=https://region.livediagnostics.monitor.azure.com/"
+  },
+  "logging": {
+    "logLevel": {
+      "default": "Information",
+      "Host.Results": "Information",
+      "Function": "Information",
+      "services": "Debug",
+      "analyze-vulnerability": "Debug",
+      "batch-analyze": "Debug",
+      "status-search": "Debug",
+      "software-inventory": "Debug"
+    },
+    "applicationInsights": {
+      "samplingSettings": {
+        "isEnabled": true,
+        "excludedTypes": "Request"
+      }
+    }
+  }
+}
