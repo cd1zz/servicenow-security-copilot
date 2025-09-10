@@ -1,0 +1,765 @@
+openapi: 3.0.3
+info:
+  title: ServiceNow Vulnerability Analyzer API
+  description: |
+    Azure Functions API for analyzing vulnerabilities and software inventory in ServiceNow.
+    
+    This API provides endpoints to:
+    - Analyze individual CVEs and QIDs for vulnerable systems
+    - Batch analyze multiple vulnerabilities
+    - Search vulnerabilities by confirmation status
+    - Query software inventory by manufacturer or product name
+    
+    All endpoints require authentication via API key in the X-API-Key header.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:7071/api
+    description: Local development server
+  - url: https://{functionAppName}.azurewebsites.net/api
+    description: Azure Functions production server
+    variables:
+      functionAppName:
+        default: servicenow-analyzer
+        description: Your Azure Function App name
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: Vulnerability Analysis
+    description: Analyze CVEs and QIDs for vulnerable systems
+  - name: Software Inventory
+    description: Query software packages and installations
+  - name: Status Search
+    description: Search vulnerabilities by confirmation status
+
+paths:
+  /analyze-vulnerability:
+    post:
+      tags:
+        - Vulnerability Analysis
+      summary: Analyze a single vulnerability
+      description: |
+        Analyzes a single CVE or QID to find vulnerable systems in your ServiceNow environment.
+        Returns counts of affected systems and detailed information about the vulnerability.
+      operationId: analyzeVulnerability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeVulnerabilityRequest'
+            examples:
+              cveAnalysis:
+                summary: Analyze a CVE
+                value:
+                  vuln_id: "CVE-2024-1234"
+                  fetch_all_details: false
+                  include_patched: false
+                  confirmation_state: "confirmed"
+              qidAnalysis:
+                summary: Analyze a QID
+                value:
+                  vuln_id: "QID-110504"
+                  fetch_all_details: true
+                  include_patched: false
+      responses:
+        '200':
+          description: Successful analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VulnerabilityAnalysisResponse'
+              examples:
+                foundVulnerability:
+                  summary: Vulnerability found with affected systems
+                  value:
+                    status: "success"
+                    vuln_id: "CVE-2024-1234"
+                    vuln_type: "CVE"
+                    summary: "Remote code execution vulnerability in Example Software"
+                    cvss_score: "9.8"
+                    published: "2024-01-15"
+                    statistics:
+                      total_vulnerable_systems: 25
+                      total_all_time: 45
+                      systems_retrieved: 25
+                      sample_only: false
+                    systems:
+                      - name: "SERVER01"
+                        vi_number: "VIT0001234"
+                        ip_address: "10.0.1.50"
+                        type: "Windows Server"
+                        status: "Operational"
+                        assignment_group: "Windows Team"
+                        description: "CVE-2024-1234 - Critical vulnerability"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /batch-analyze:
+    post:
+      tags:
+        - Vulnerability Analysis
+      summary: Analyze multiple vulnerabilities
+      description: |
+        Analyzes multiple CVEs and/or QIDs in parallel or sequentially.
+        Useful for bulk vulnerability assessment and reporting.
+      operationId: batchAnalyze
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchAnalyzeRequest'
+            examples:
+              parallelAnalysis:
+                summary: Analyze multiple CVEs in parallel
+                value:
+                  vuln_ids: ["CVE-2024-1234", "CVE-2024-5678", "QID-110504"]
+                  parallel: true
+                  fetch_all_details: false
+      responses:
+        '200':
+          description: Successful batch analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchAnalysisResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /status-search:
+    post:
+      tags:
+        - Status Search
+      summary: Search vulnerabilities by confirmation status
+      description: |
+        Searches for all vulnerabilities with a specific confirmation status.
+        Useful for finding all confirmed vulnerabilities or those requiring investigation.
+      operationId: statusSearch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StatusSearchRequest'
+            examples:
+              confirmedSearch:
+                summary: Search for confirmed vulnerabilities
+                value:
+                  confirmation_state: "confirmed"
+                  limit: 100
+                  include_systems: true
+              potentialSearch:
+                summary: Search for potential vulnerabilities
+                value:
+                  confirmation_state: "potential"
+                  limit: 50
+                  include_systems: false
+      responses:
+        '200':
+          description: Successful status search
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusSearchResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /software-inventory:
+    post:
+      tags:
+        - Software Inventory
+      summary: Query software inventory
+      description: |
+        Searches the CMDB software packages (cmdb_ci_spkg) table to find installed software
+        by manufacturer or software name. Returns version distribution and installation counts.
+      operationId: softwareInventory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SoftwareInventoryRequest'
+            examples:
+              manufacturerSearch:
+                summary: Search by manufacturer
+                value:
+                  search_type: "manufacturer"
+                  manufacturer: "Palo Alto Networks"
+                  fetch_details: true
+                  limit: 100
+              softwareSearch:
+                summary: Search by software name
+                value:
+                  search_type: "software"
+                  software_name: "Cortex XDR"
+                  fetch_details: true
+                  limit: 50
+      responses:
+        '200':
+          description: Successful software inventory query
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ManufacturerSearchResponse'
+                  - $ref: '#/components/schemas/SoftwareSearchResponse'
+              examples:
+                manufacturerResult:
+                  summary: Manufacturer search results
+                  value:
+                    status: "success"
+                    search_type: "manufacturer"
+                    manufacturer: "Palo Alto Networks"
+                    manufacturer_id: "48096dc31bc78d1079d198242a4bcb02"
+                    total_packages: 15
+                    total_installations: 250
+                    software_products:
+                      "Cortex XDR":
+                        manufacturer: "Palo Alto Networks"
+                        manufacturer_id: "48096dc31bc78d1079d198242a4bcb02"
+                        total_installations: 150
+                        version_count: 3
+                        versions:
+                          - version: "3.4.2"
+                            install_count: 100
+                          - version: "3.4.1"
+                            install_count: 35
+                          - version: "3.3.0"
+                            install_count: 15
+                    top_products:
+                      - name: "Cortex XDR"
+                        total_installations: 150
+                        version_count: 3
+                      - name: "GlobalProtect"
+                        total_installations: 100
+                        version_count: 2
+                softwareResult:
+                  summary: Software search results
+                  value:
+                    status: "success"
+                    search_type: "software"
+                    software_name: "Cortex XDR"
+                    total_versions: 3
+                    total_installations: 150
+                    versions:
+                      "3.4.2":
+                        full_name: "Cortex XDR Agent"
+                        manufacturer: "Palo Alto Networks"
+                        manufacturer_id: "48096dc31bc78d1079d198242a4bcb02"
+                        install_count: 100
+                        sample_hosts:
+                          - host_name: "DESKTOP-001"
+                            host_ip: "10.0.1.50"
+                            host_os: "Windows 10"
+                            install_date: "2024-01-15"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Software not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for authentication (optional if not configured)
+
+  schemas:
+    AnalyzeVulnerabilityRequest:
+      type: object
+      required:
+        - vuln_id
+      properties:
+        vuln_id:
+          type: string
+          description: CVE identifier (CVE-YYYY-NNNNN) or QID (QID-NNNNNN or just NNNNNN)
+          example: "CVE-2024-1234"
+        fetch_all_details:
+          type: boolean
+          description: If true, fetch details for all systems (slower). If false, fetch sample only.
+          default: false
+        include_patched:
+          type: boolean
+          description: If true, include patched/remediated systems in the count
+          default: false
+        confirmation_state:
+          type: string
+          description: Filter by vulnerability confirmation state
+          enum:
+            - confirmed
+            - potential
+            - potential-investigation
+            - potential-patch
+            - potential-low
+            - none
+          example: "confirmed"
+
+    BatchAnalyzeRequest:
+      type: object
+      required:
+        - vuln_ids
+      properties:
+        vuln_ids:
+          type: array
+          items:
+            type: string
+          description: Array of CVE IDs and/or QIDs to analyze
+          example: ["CVE-2024-1234", "CVE-2024-5678", "QID-110504"]
+        fetch_all_details:
+          type: boolean
+          description: If true, fetch details for all systems for each vulnerability
+          default: false
+        include_patched:
+          type: boolean
+          description: If true, include patched/remediated systems
+          default: false
+        confirmation_state:
+          type: string
+          description: Filter by confirmation state for all vulnerabilities
+          enum:
+            - confirmed
+            - potential
+            - potential-investigation
+            - potential-patch
+            - potential-low
+            - none
+        parallel:
+          type: boolean
+          description: If true, analyze vulnerabilities in parallel (faster)
+          default: true
+
+    StatusSearchRequest:
+      type: object
+      required:
+        - confirmation_state
+      properties:
+        confirmation_state:
+          type: string
+          description: Confirmation state to search for
+          enum:
+            - confirmed
+            - potential
+            - potential-investigation
+            - potential-patch
+            - potential-low
+            - none
+          example: "confirmed"
+        limit:
+          type: integer
+          description: Maximum number of vulnerabilities to return
+          minimum: 1
+          maximum: 1000
+          default: 100
+        include_systems:
+          type: boolean
+          description: If true, include affected system details
+          default: true
+
+    SoftwareInventoryRequest:
+      type: object
+      required:
+        - search_type
+      properties:
+        search_type:
+          type: string
+          description: Type of search to perform
+          enum:
+            - manufacturer
+            - software
+        manufacturer:
+          type: string
+          description: Manufacturer/vendor name (required if search_type is 'manufacturer')
+          example: "Palo Alto Networks"
+        software_name:
+          type: string
+          description: Software name (required if search_type is 'software')
+          example: "Cortex XDR"
+        fetch_details:
+          type: boolean
+          description: If true, fetch installation details including host information
+          default: true
+        limit:
+          type: integer
+          description: Maximum number of results to return
+          minimum: 1
+          maximum: 1000
+          default: 1000
+
+    VulnerabilityAnalysisResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success, not_found]
+        vuln_id:
+          type: string
+          description: The vulnerability identifier
+        vuln_type:
+          type: string
+          enum: [CVE, QID]
+        summary:
+          type: string
+          description: Vulnerability description
+        cvss_score:
+          type: string
+          description: CVSS base score
+        published:
+          type: string
+          description: Publication date (for CVEs)
+        source:
+          type: string
+          description: Source of vulnerability data (e.g., Qualys for QIDs)
+        associated_cves:
+          type: string
+          description: Associated CVEs (for QIDs)
+        statistics:
+          type: object
+          properties:
+            total_vulnerable_systems:
+              type: integer
+              description: Currently vulnerable systems
+            total_all_time:
+              type: integer
+              description: All-time total including patched
+            systems_retrieved:
+              type: integer
+              description: Number of system details retrieved
+            sample_only:
+              type: boolean
+              description: Whether this is a sample or complete list
+            filtered_vulnerable_systems:
+              type: integer
+              description: Count after applying confirmation filter
+            confirmation_filter:
+              type: string
+              description: Applied confirmation state filter
+        systems:
+          type: array
+          description: List of affected systems (may be limited)
+          items:
+            $ref: '#/components/schemas/VulnerableSystem'
+
+    VulnerableSystem:
+      type: object
+      properties:
+        name:
+          type: string
+          description: System hostname
+        vi_number:
+          type: string
+          description: Vulnerable Item ticket number
+        ip_address:
+          type: string
+          description: IP address of the system
+        type:
+          type: string
+          description: System type/class
+        status:
+          type: string
+          description: Operational status
+        assignment_group:
+          type: string
+          description: Assigned team/group
+        description:
+          type: string
+          description: Vulnerability description for this system
+
+    BatchAnalysisResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success, partial, failed]
+        total_analyzed:
+          type: integer
+          description: Number of vulnerabilities analyzed
+        successful:
+          type: integer
+          description: Number of successful analyses
+        failed:
+          type: integer
+          description: Number of failed analyses
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              vuln_id:
+                type: string
+              status:
+                type: string
+                enum: [success, not_found, error]
+              data:
+                $ref: '#/components/schemas/VulnerabilityAnalysisResponse'
+              error:
+                type: string
+                description: Error message if analysis failed
+
+    StatusSearchResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        confirmation_state:
+          type: string
+          description: The searched confirmation state
+        total_vulnerabilities:
+          type: integer
+          description: Total number of vulnerabilities found
+        vulnerabilities:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                description: Vulnerability ID (CVE or QID)
+              summary:
+                type: string
+                description: Vulnerability description
+              cvss_score:
+                type: string
+                description: CVSS score
+              affected_systems:
+                type: integer
+                description: Number of affected systems
+              cve_ids:
+                type: array
+                items:
+                  type: string
+                description: Associated CVE IDs
+        affected_systems:
+          type: array
+          description: List of affected systems (if include_systems is true)
+          items:
+            type: object
+            properties:
+              hostname:
+                type: string
+              ip_address:
+                type: string
+              vulnerabilities:
+                type: array
+                items:
+                  type: string
+
+    ManufacturerSearchResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success]
+        search_type:
+          type: string
+          enum: [manufacturer]
+        manufacturer:
+          type: string
+          description: Manufacturer/vendor name
+        manufacturer_id:
+          type: string
+          description: ServiceNow sys_id for the manufacturer company
+        total_packages:
+          type: integer
+          description: Number of unique software packages found
+        total_installations:
+          type: integer
+          description: Total installation count across all packages
+        permission_warnings:
+          type: array
+          items:
+            type: string
+          description: List of tables with permission issues encountered
+        software_products:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              manufacturer:
+                type: string
+              manufacturer_id:
+                type: string
+                description: ServiceNow sys_id for the manufacturer
+              total_installations:
+                type: integer
+              version_count:
+                type: integer
+              versions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    version:
+                      type: string
+                    install_count:
+                      type: integer
+        top_products:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              total_installations:
+                type: integer
+              version_count:
+                type: integer
+        sample_installations:
+          type: object
+          description: Sample installation details for top package
+          properties:
+            software:
+              type: string
+            version:
+              type: string
+            hosts:
+              type: array
+              items:
+                $ref: '#/components/schemas/HostInstallation'
+
+    SoftwareSearchResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success, not_found]
+        search_type:
+          type: string
+          enum: [software]
+        software_name:
+          type: string
+        total_versions:
+          type: integer
+          description: Number of versions found
+        total_installations:
+          type: integer
+          description: Total installations across all versions
+        permission_warnings:
+          type: array
+          items:
+            type: string
+          description: List of tables with permission issues encountered
+        versions:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              full_name:
+                type: string
+              manufacturer:
+                type: string
+              manufacturer_id:
+                type: string
+                description: ServiceNow sys_id for the manufacturer
+              install_count:
+                type: integer
+              sys_id:
+                type: string
+              sample_hosts:
+                type: array
+                items:
+                  $ref: '#/components/schemas/HostInstallation'
+        installation_summary:
+          type: object
+          properties:
+            total_versions:
+              type: integer
+            total_installations:
+              type: integer
+            version_distribution:
+              type: array
+              items:
+                type: object
+                properties:
+                  version:
+                    type: string
+                  install_count:
+                    type: integer
+                  manufacturer:
+                    type: string
+
+    HostInstallation:
+      type: object
+      properties:
+        host_name:
+          type: string
+          description: Hostname
+        host_ip:
+          type: string
+          description: IP address
+        host_os:
+          type: string
+          description: Operating system
+        install_date:
+          type: string
+          description: Installation date
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+        details:
+          type: object
+          description: Additional error details
+
+  responses:
+    BadRequest:
+      description: Bad request - Invalid parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Missing required parameter: vuln_id"
+
+    Unauthorized:
+      description: Unauthorized - Invalid or missing API key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Invalid API key"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: "Internal server error occurred"
