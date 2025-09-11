@@ -1,4 +1,5 @@
-openapi: 3.0.3
+openapi: 3.0.0
+
 info:
   title: ServiceNow Vulnerability Analyzer API
   description: |
@@ -11,34 +12,30 @@ info:
     - Query software inventory by manufacturer or product name
     
     All endpoints require authentication via API key in the X-API-Key header.
+    
+    ## LLM Usage Guidance
+    
+    When using this API through an LLM, focus on these primary metrics:
+    
+    **For Vulnerability Analysis:**
+    - `statistics.total_vulnerable_systems` - The count of affected systems (primary impact metric)
+    - `cvss_score` - Severity rating (9.0+ critical, 7.0+ high priority)
+    - `systems[].assignment_group` - Teams responsible for remediation
+    
+    **For Software Inventory:**
+    - `total_installations` - Deployment scale across environment
+    - Version distribution - Identify outdated software requiring updates
+    - `manufacturer` verification - Ensure correct vendor association
+    
+    **Best Practices:**
+    - Use `confirmation_state: "confirmed"` for actionable vulnerabilities
+    - Set `fetch_all_details: false` for faster initial assessments
+    - Leverage wildcards (*) in software searches for broader discovery
+    - Focus on high CVSS scores AND high system counts for prioritization
   version: 1.0.0
-  contact:
-    name: API Support
-    email: support@example.com
-  license:
-    name: MIT
-    url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: http://localhost:7071/api
-    description: Local development server
-  - url: https://{functionAppName}.azurewebsites.net/api
-    description: Azure Functions production server
-    variables:
-      functionAppName:
-        default: servicenow-analyzer
-        description: Your Azure Function App name
-
-security:
-  - ApiKeyAuth: []
-
-tags:
-  - name: Vulnerability Analysis
-    description: Analyze CVEs and QIDs for vulnerable systems
-  - name: Software Inventory
-    description: Query software packages and installations
-  - name: Status Search
-    description: Search vulnerabilities by confirmation status
+  - url: https://svcnow-scp-cve.azurewebsites.net/api
 
 paths:
   /analyze-vulnerability:
@@ -49,6 +46,19 @@ paths:
       description: |
         Analyzes a single CVE or QID to find vulnerable systems in your ServiceNow environment.
         Returns counts of affected systems and detailed information about the vulnerability.
+        
+        **Key fields the LLM should focus on in the response:**
+        - `statistics.total_vulnerable_systems`: The PRIMARY metric - number of currently vulnerable systems
+        - `statistics.filtered_vulnerable_systems`: Count after applying confirmation filters (if filters used)
+        - `cvss_score`: Critical for assessing severity (9.0+ is critical, 7.0-8.9 is high)
+        - `systems`: Array of affected systems with `name`, `ip_address`, and `assignment_group` for remediation routing
+        - `summary`: Human-readable vulnerability description for context
+        - `associated_cves`: For QIDs, shows linked CVE identifiers
+        
+        **Important notes:**
+        - For large environments, may return sample data (`sample_only: true`) with limited system details
+        - Use `confirmation_state` filter to focus on confirmed vs potential vulnerabilities
+        - QIDs are Qualys vulnerability identifiers that may map to multiple CVEs
       operationId: analyzeVulnerability
       requestBody:
         required: true
@@ -79,7 +89,7 @@ paths:
                 $ref: '#/components/schemas/VulnerabilityAnalysisResponse'
               examples:
                 foundVulnerability:
-                  summary: Vulnerability found with affected systems
+                  summary: CVE found with affected systems
                   value:
                     status: "success"
                     vuln_id: "CVE-2024-1234"
@@ -87,6 +97,10 @@ paths:
                     summary: "Remote code execution vulnerability in Example Software"
                     cvss_score: "9.8"
                     published: "2024-01-15"
+                    servicenow_urls:
+                      - qid: "QID-92307"
+                        source: "Qualys"
+                        url: "https://your-instance.service-now.com/now/nav/ui/classic/params/target/sn_vul_vulnerable_item_list.do%3Fsysparm_query%3DGOTOvulnerability.id%253E%253DQID-92307%255Estate!%3D3%26sysparm_first_row%3D1%26sysparm_view%3D"
                     statistics:
                       total_vulnerable_systems: 25
                       total_all_time: 45
@@ -100,6 +114,22 @@ paths:
                         status: "Operational"
                         assignment_group: "Windows Team"
                         description: "CVE-2024-1234 - Critical vulnerability"
+                qidAnalysis:
+                  summary: QID found with direct ServiceNow URL
+                  value:
+                    status: "success"
+                    vuln_id: "QID-92307"
+                    vuln_type: "QID"
+                    summary: "Security vulnerability detected by Qualys scanner"
+                    cvss_score: "8.6"
+                    source: "Qualys"
+                    associated_cves: "CVE-2024-1234,CVE-2024-1235"
+                    servicenow_url: "https://your-instance.service-now.com/now/nav/ui/classic/params/target/sn_vul_vulnerable_item_list.do%3Fsysparm_query%3DGOTOvulnerability.id%253E%253DQID-92307%255Estate!%3D3%26sysparm_first_row%3D1%26sysparm_view%3D"
+                    statistics:
+                      total_vulnerable_systems: 15
+                      total_all_time: 30
+                      systems_retrieved: 10
+                      sample_only: true
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -115,6 +145,19 @@ paths:
       description: |
         Analyzes multiple CVEs and/or QIDs in parallel or sequentially.
         Useful for bulk vulnerability assessment and reporting.
+        
+        **Key fields the LLM should focus on in the response:**
+        - `results[]`: Array containing analysis for each vulnerability
+        - For each result, prioritize by:
+          - `data.statistics.total_vulnerable_systems`: System count for prioritization
+          - `data.cvss_score`: Severity assessment
+          - `status`: Check if vulnerability was found ("success") or not ("not_found")
+        - `successful` vs `failed`: Summary counts for batch processing status
+        
+        **Important usage notes:**
+        - Set `parallel: true` for faster processing of multiple vulnerabilities
+        - Combine CVEs and QIDs in single batch for comprehensive assessment
+        - Results maintain individual vulnerability context for detailed analysis
       operationId: batchAnalyze
       requestBody:
         required: true
@@ -151,6 +194,28 @@ paths:
       description: |
         Searches for all vulnerabilities with a specific confirmation status.
         Useful for finding all confirmed vulnerabilities or those requiring investigation.
+        
+        **Key fields the LLM should focus on in the response:**
+        - `total_vulnerabilities`: Overall count of vulnerabilities matching the status
+        - `vulnerabilities[]`: Sorted list of vulnerabilities, each containing:
+          - `id`: CVE or QID identifier for tracking
+          - `cvss_score`: Severity indicator (prioritize 9.0+ critical, 7.0-8.9 high)
+          - `affected_systems`: Number of systems impacted (higher = more urgent)
+          - `cve_ids[]`: Associated CVEs for QIDs (important for patch correlation)
+          - `summary`: Vulnerability description for risk assessment
+        - `affected_systems[]`: List of impacted hosts when `include_systems: true`
+        
+        **Confirmation states explained:**
+        - `confirmed`: Verified vulnerabilities requiring immediate action
+        - `potential`: All unconfirmed vulnerabilities needing review
+        - `potential-investigation`: Requires security team investigation
+        - `potential-patch`: Awaiting patch availability
+        - `potential-low`: Low risk, deferred remediation
+        
+        **Best practices:**
+        - Start with `confirmed` status for actionable items
+        - Use higher `limit` values for comprehensive assessment
+        - Enable `include_systems` for remediation planning
       operationId: statusSearch
       requestBody:
         required: true
@@ -163,13 +228,13 @@ paths:
                 summary: Search for confirmed vulnerabilities
                 value:
                   confirmation_state: "confirmed"
-                  limit: 100
+                  limit: 10
                   include_systems: true
               potentialSearch:
                 summary: Search for potential vulnerabilities
                 value:
                   confirmation_state: "potential"
-                  limit: 50
+                  limit: 10
                   include_systems: false
       responses:
         '200':
@@ -193,6 +258,30 @@ paths:
       description: |
         Searches the CMDB software packages (cmdb_ci_spkg) table to find installed software
         by manufacturer or software name. Returns version distribution and installation counts.
+        
+        **Key fields the LLM should focus on for MANUFACTURER searches:**
+        - `total_installations`: Overall deployment footprint across environment
+        - `total_packages`: Number of distinct software products from vendor
+        - `software_products{}`: Dictionary of products with:
+          - Each product's `total_installations`: Deployment scale
+          - `versions[]`: Version fragmentation (many versions = update challenges)
+          - `version` and `install_count`: Identify outdated versions
+        - `manufacturer_id`: ServiceNow sys_id for vendor correlation
+        
+        **Key fields for SOFTWARE NAME searches:**
+        - `total_installations`: Total deployment count across all versions
+        - `versions{}`: Version distribution showing:
+          - `install_count` per version: Identify prevalent versions
+          - `manufacturer`: Confirm correct vendor (avoid naming collisions)
+          - `sample_hosts[]`: Example systems for validation
+        - Version keys themselves: Assess version currency and standardization
+        
+        **Important considerations:**
+        - Wildcards supported: Use "*" for pattern matching (e.g., "Microsoft*", "*Office*")
+        - `fetch_details: false` for faster counts-only queries
+        - Results may be limited by permissions (sam_user role required for full details)
+        - High install counts indicate critical/widespread software
+        - Multiple versions suggest patching/standardization opportunities
       operationId: softwareInventory
       requestBody:
         required: true
@@ -207,14 +296,15 @@ paths:
                   search_type: "manufacturer"
                   manufacturer: "Palo Alto Networks"
                   fetch_details: true
-                  limit: 100
+                  limit: 10
               softwareSearch:
                 summary: Search by software name
                 value:
                   search_type: "software"
                   software_name: "Cortex XDR"
                   fetch_details: true
-                  limit: 50
+                  limit: 10
+                  performance_mode: "balanced"
       responses:
         '200':
           description: Successful software inventory query
@@ -302,19 +392,32 @@ components:
       properties:
         vuln_id:
           type: string
-          description: CVE identifier (CVE-YYYY-NNNNN) or QID (QID-NNNNNN or just NNNNNN)
+          description: |
+            CVE identifier (CVE-YYYY-NNNNN) or QID (QID-NNNNNN or just NNNNNN).
+            CVEs are standard vulnerability identifiers. QIDs are Qualys-specific IDs that may cover multiple CVEs.
           example: "CVE-2024-1234"
         fetch_all_details:
           type: boolean
-          description: If true, fetch details for all systems (slower). If false, fetch sample only.
+          description: |
+            Controls detail level of system information returned.
+            - true: Retrieve all affected systems (slower, comprehensive)
+            - false: Retrieve sample of systems only (faster, sufficient for assessment)
+            Recommendation: Use false for initial assessment, true for remediation planning.
           default: false
         include_patched:
           type: boolean
-          description: If true, include patched/remediated systems in the count
+          description: |
+            Controls inclusion of historically vulnerable but now patched systems.
+            - true: Include all systems ever affected (shows remediation history)
+            - false: Only currently vulnerable systems (actionable items)
+            Recommendation: Use false for active vulnerability management.
           default: false
         confirmation_state:
           type: string
-          description: Filter by vulnerability confirmation state
+          description: |
+            Filters results by vulnerability verification status.
+            Use "confirmed" for verified vulnerabilities requiring action.
+            Use "potential" to include unverified detections for review.
           enum:
             - confirmed
             - potential
@@ -374,6 +477,12 @@ components:
             - potential-low
             - none
           example: "confirmed"
+        days:
+          type: integer
+          description: Number of days to look back for vulnerabilities
+          minimum: 1
+          maximum: 365
+          default: 14
         limit:
           type: integer
           description: Maximum number of vulnerabilities to return
@@ -384,6 +493,10 @@ components:
           type: boolean
           description: If true, include affected system details
           default: true
+        fetch_all_details:
+          type: boolean
+          description: If true, fetch complete details for all vulnerabilities
+          default: false
 
     SoftwareInventoryRequest:
       type: object
@@ -392,28 +505,67 @@ components:
       properties:
         search_type:
           type: string
-          description: Type of search to perform
+          description: |
+            Determines search strategy:
+            - "manufacturer": Find all software from a vendor/company
+            - "software": Find specific software product installations
           enum:
             - manufacturer
             - software
         manufacturer:
           type: string
-          description: Manufacturer/vendor name (required if search_type is 'manufacturer')
+          description: |
+            Manufacturer/vendor name (required if search_type is 'manufacturer').
+            Supports wildcards with * for pattern matching (e.g., "Microsoft*", "*Networks").
+            Examples: "Microsoft", "Adobe", "Palo Alto Networks", "Oracle"
           example: "Palo Alto Networks"
         software_name:
           type: string
-          description: Software name (required if search_type is 'software')
+          description: |
+            Software product name (required if search_type is 'software').
+            Supports wildcards with * for broader searches (e.g., "Windows*", "*Office*").
+            Examples: "Windows Server", "Adobe Acrobat", "Chrome", "Java"
           example: "Cortex XDR"
         fetch_details:
           type: boolean
-          description: If true, fetch installation details including host information
+          description: |
+            Controls host-level detail retrieval:
+            - true: Include sample host details (names, IPs, install dates)
+            - false: Return only counts and version info (faster)
+            Recommendation: Use false for inventory counts, true for deployment details.
           default: true
         limit:
           type: integer
-          description: Maximum number of results to return
+          description: |
+            Maximum number of results to return.
+            For manufacturer searches: limits software packages returned.
+            For software searches: limits versions returned.
+            Higher limits provide comprehensive view but slower response.
           minimum: 1
           maximum: 1000
           default: 1000
+        max_hosts_per_version:
+          type: integer
+          description: |
+            Maximum number of host samples to retrieve per software version.
+            Ignored in 'fast' performance mode.
+            Automatically adjusted in 'full' mode to match limit.
+          minimum: 0
+          maximum: 100
+          default: 25
+        performance_mode:
+          type: string
+          description: |
+            Controls the trade-off between speed and detail level:
+            - "fast": Counts only, no host details (fastest, minimal API calls)
+            - "balanced": Limited host sampling (default, good performance with useful details)
+            - "full": Maximum details within limits (slower, comprehensive data)
+          enum:
+            - fast
+            - balanced
+            - full
+          default: balanced
+          example: "balanced"
 
     VulnerabilityAnalysisResponse:
       type: object
@@ -421,51 +573,89 @@ components:
         status:
           type: string
           enum: [success, not_found]
+          description: Whether the vulnerability was found in ServiceNow
         vuln_id:
           type: string
-          description: The vulnerability identifier
+          description: The vulnerability identifier (CVE-YYYY-NNNNN or QID-NNNNNN)
         vuln_type:
           type: string
           enum: [CVE, QID]
+          description: Type of vulnerability identifier (CVE = standard, QID = Qualys)
         summary:
           type: string
-          description: Vulnerability description
+          description: |
+            Human-readable vulnerability description. IMPORTANT for understanding the risk
+            and affected components. May indicate attack vectors and impact.
         cvss_score:
           type: string
-          description: CVSS base score
+          description: |
+            CVSS base score (0-10). CRITICAL FIELD for prioritization:
+            - 9.0-10.0: Critical severity, immediate action required
+            - 7.0-8.9: High severity, urgent remediation needed
+            - 4.0-6.9: Medium severity, schedule remediation
+            - 0.1-3.9: Low severity, assess based on exposure
         published:
           type: string
-          description: Publication date (for CVEs)
+          description: Publication date (for CVEs) - helps assess vulnerability age and exposure window
         source:
           type: string
-          description: Source of vulnerability data (e.g., Qualys for QIDs)
+          description: Vulnerability scanner source (e.g., "Qualys", "Tenable") for QIDs
         associated_cves:
           type: string
-          description: Associated CVEs (for QIDs)
+          description: For QIDs, comma-separated list of related CVE identifiers for correlation
+        servicenow_url:
+          type: string
+          description: |
+            Direct URL to ServiceNow vulnerability list for this QID (when analyzing a QID).
+            The URL domain is automatically derived from your SERVICENOW_INSTANCE_URL configuration.
+        servicenow_urls:
+          type: array
+          description: |
+            Direct URLs to ServiceNow vulnerability lists for associated QIDs (when analyzing a CVE).
+            The URL domain is automatically derived from your SERVICENOW_INSTANCE_URL configuration.
+          items:
+            type: object
+            properties:
+              qid:
+                type: string
+                description: The QID identifier
+              source:
+                type: string
+                description: Scanner source (e.g., Qualys, Tenable)
+              url:
+                type: string
+                description: Direct URL to ServiceNow vulnerability list for this QID
         statistics:
           type: object
+          description: CRITICAL METRICS for vulnerability impact assessment
           properties:
             total_vulnerable_systems:
               type: integer
-              description: Currently vulnerable systems
+              description: |
+                PRIMARY METRIC: Number of currently vulnerable systems requiring remediation.
+                This is the most important count for assessing impact and prioritization.
             total_all_time:
               type: integer
-              description: All-time total including patched
+              description: Historical count including now-patched systems (shows remediation progress)
             systems_retrieved:
               type: integer
-              description: Number of system details retrieved
+              description: Number of system details actually fetched (may be less than total for performance)
             sample_only:
               type: boolean
-              description: Whether this is a sample or complete list
+              description: If true, systems array contains only a sample, not all affected systems
             filtered_vulnerable_systems:
               type: integer
-              description: Count after applying confirmation filter
+              description: |
+                Count after applying confirmation_state filter. When present, this is the
+                actionable count based on verification status.
             confirmation_filter:
               type: string
-              description: Applied confirmation state filter
+              description: The confirmation state filter applied (confirmed/potential/etc.)
         systems:
           type: array
-          description: List of affected systems (may be limited)
+          description: |
+            Array of affected systems with details. May be limited sample based on fetch_all_details.
+            Focus on name, ip_address, and assignment_group for remediation routing.
           items:
             $ref: '#/components/schemas/VulnerableSystem'
 
@@ -474,25 +664,33 @@ components:
       properties:
         name:
           type: string
-          description: System hostname
+          description: |
+            System hostname - PRIMARY IDENTIFIER for the affected system.
+            Use for targeting remediation efforts.
         vi_number:
           type: string
-          description: Vulnerable Item ticket number
+          description: |
+            Vulnerable Item ticket number in ServiceNow (format: VIT0XXXXXX).
+            Reference for tracking remediation status.
         ip_address:
           type: string
-          description: IP address of the system
+          description: |
+            IP address of the system - useful for network segmentation analysis
+            and identifying critical network zones.
         type:
           type: string
-          description: System type/class
+          description: System type/class (e.g., "Windows Server", "Linux Server") for platform-specific remediation
         status:
           type: string
-          description: Operational status
+          description: Operational status - identifies if system is active/production
         assignment_group:
           type: string
-          description: Assigned team/group
+          description: |
+            CRITICAL for remediation routing - identifies the team responsible
+            for patching this system (e.g., "Windows Team", "Linux Admins").
         description:
           type: string
-          description: Vulnerability description for this system
+          description: Specific vulnerability details for this system instance
 
     BatchAnalysisResponse:
       type: object
@@ -585,16 +783,22 @@ components:
           enum: [manufacturer]
         manufacturer:
           type: string
-          description: Manufacturer/vendor name
+          description: Manufacturer/vendor name as searched
         manufacturer_id:
           type: string
-          description: ServiceNow sys_id for the manufacturer company
+          description: |
+            ServiceNow sys_id for the manufacturer company record.
+            Useful for cross-referencing with other ServiceNow data.
         total_packages:
           type: integer
-          description: Number of unique software packages found
+          description: |
+            Number of distinct software products from this vendor.
+            High count indicates diverse software portfolio in environment.
         total_installations:
           type: integer
-          description: Total installation count across all packages
+          description: |
+            PRIMARY METRIC: Total deployment count across all software packages.
+            Indicates vendor footprint and criticality in the environment.
         permission_warnings:
           type: array
           items:
@@ -602,27 +806,43 @@ components:
           description: List of tables with permission issues encountered
         software_products:
           type: object
+          description: |
+            Dictionary of all software products from this manufacturer.
+            Key = software name, Value = product details.
+            CRITICAL for understanding software diversity and update requirements.
           additionalProperties:
             type: object
             properties:
               manufacturer:
                 type: string
+                description: Vendor name (confirms correct manufacturer association)
               manufacturer_id:
                 type: string
                 description: ServiceNow sys_id for the manufacturer
               total_installations:
                 type: integer
+                description: |
+                  IMPORTANT: Total deployments of this specific software.
+                  Higher counts = more critical for patching and standardization.
               version_count:
                 type: integer
+                description: |
+                  Number of different versions deployed.
+                  High count indicates version fragmentation and update challenges.
               versions:
                 type: array
+                description: |
+                  Version breakdown showing deployment distribution.
+                  Look for outdated versions with high install_count for update priorities.
                 items:
                   type: object
                   properties:
                     version:
                       type: string
+                      description: Version string (assess currency against latest releases)
                     install_count:
                       type: integer
+                      description: Systems running this version (target for updates if outdated)
         top_products:
           type: array
           items:
@@ -653,17 +873,23 @@ components:
         status:
           type: string
           enum: [success, not_found]
+          description: Whether the software was found in the environment
         search_type:
           type: string
           enum: [software]
         software_name:
           type: string
+          description: The software product name as searched
         total_versions:
           type: integer
-          description: Number of versions found
+          description: |
+            Number of different versions found.
+            Multiple versions indicate update/standardization opportunities.
         total_installations:
           type: integer
-          description: Total installations across all versions
+          description: |
+            PRIMARY METRIC: Total deployment count across all versions.
+            Indicates software criticality and update scope.
         permission_warnings:
           type: array
           items:
@@ -671,22 +897,37 @@ components:
           description: List of tables with permission issues encountered
         versions:
           type: object
+          description: |
+            Dictionary of version details. Key = version string, Value = version info.
+            CRITICAL for version management and update planning.
+            Compare version strings to identify outdated deployments.
           additionalProperties:
             type: object
             properties:
               full_name:
                 type: string
+                description: Complete software product name from CMDB
               manufacturer:
                 type: string
+                description: |
+                  Vendor name - IMPORTANT to verify correct product
+                  (avoid confusion with similarly named software).
               manufacturer_id:
                 type: string
                 description: ServiceNow sys_id for the manufacturer
               install_count:
                 type: integer
+                description: |
+                  CRITICAL METRIC: Number of systems running this version.
+                  High counts on old versions = urgent update candidates.
               sys_id:
                 type: string
+                description: ServiceNow package sys_id for API reference
               sample_hosts:
                 type: array
+                description: |
+                  Example systems running this version (if fetch_details=true).
+                  Use for validation and targeted update testing.
                 items:
                   $ref: '#/components/schemas/HostInstallation'
         installation_summary:

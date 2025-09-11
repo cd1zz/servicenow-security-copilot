@@ -480,6 +480,12 @@ def format_batch_response(results: List[Dict[str, Any]]) -> Dict[str, Any]:
             if result.get("associated_cves"):
                 formatted_result["associated_cves"] = result["associated_cves"]
             
+            # Add ServiceNow direct URLs
+            if result.get('servicenow_url'):
+                formatted_result['servicenow_url'] = result['servicenow_url']
+            elif result.get('servicenow_urls'):
+                formatted_result['servicenow_urls'] = result['servicenow_urls']
+            
             # Add limited system details
             if result.get("systems"):
                 formatted_result["systems_sample"] = [

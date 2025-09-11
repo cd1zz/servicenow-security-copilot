@@ -28,6 +28,8 @@ class ServiceNowClient:
         self.company_cache = {}  # Cache for company name lookups
         self.sam_access_denied = False
         self.permission_warnings = set()
+        # Extract instance name from URL for generating direct links
+        self.instance_name = self.instance_url.replace('https://', '').replace('.service-now.com', '')
         
         # Enhanced logging context
         logger.info("ServiceNow client initialized", extra={
@@ -114,6 +116,27 @@ class ServiceNowClient:
         })
         
         return self.access_token
+    
+    def generate_servicenow_url(self, qid: str, state_filter: str = "!%3D3") -> str:
+        """
+        Generate a direct URL to ServiceNow vulnerability list for a specific QID.
+        
+        Args:
+            qid: The QID value (e.g., "QID-92307" or "92307")
+            state_filter: State filter for the URL (default: "!%3D3" meaning not closed)
+        
+        Returns:
+            Full URL to ServiceNow vulnerability list filtered by QID
+        """
+        # Ensure QID format
+        if not qid.startswith('QID-'):
+            qid = f'QID-{qid}'
+        
+        # Build the URL with proper encoding
+        base_url = f"https://{self.instance_name}.service-now.com/now/nav/ui/classic/params/target/"
+        query_part = f"sn_vul_vulnerable_item_list.do%3Fsysparm_query%3DGOTOvulnerability.id%253E%253D{qid}%255Estate{state_filter}%26sysparm_first_row%3D1%26sysparm_view%3D"
+        
+        return base_url + query_part
     
     @log_servicenow_operation("api_request")
     def api_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
@@ -391,6 +414,20 @@ class VulnerabilityAnalyzer:
                 'timestamp': datetime.utcnow().isoformat()
             }
         })
+    
+    def generate_servicenow_url(self, qid: str, state_filter: str = "!%3D3") -> str:
+        """
+        Generate a direct URL to ServiceNow vulnerability list for a specific QID.
+        Delegates to the client's method.
+        
+        Args:
+            qid: The QID value (e.g., "QID-92307" or "92307")
+            state_filter: State filter for the URL (default: "!%3D3" meaning not closed)
+        
+        Returns:
+            Full URL to ServiceNow vulnerability list filtered by QID
+        """
+        return self.client.generate_servicenow_url(qid, state_filter)
         
     @log_servicenow_operation("analyze_vulnerability")
     def analyze_vulnerability(self, vuln_id: str, fetch_all_details: bool = False, 
@@ -521,6 +558,9 @@ class VulnerabilityAnalyzer:
         results['summary'] = tp_entry.get('summary', tp_entry.get('description', 'N/A'))
         results['cvss_score'] = tp_entry.get('cvss_base_score', 'N/A')
         
+        # Generate ServiceNow URL for this QID
+        results['servicenow_url'] = self.generate_servicenow_url(qid_number)
+        
         # Get associated CVEs
         cves_list = tp_entry.get('cves_list', '')
         if cves_list:
@@ -580,6 +620,10 @@ class VulnerabilityAnalyzer:
         if third_party_result and third_party_result.get('result'):
             results['third_party_entries'] = third_party_result['result']
             third_party_count = len(third_party_result['result'])
+        else:
+            # No scan data found, but CVE exists
+            results['third_party_entries'] = []
+            self.logger.info(f"No vulnerability scan data found for CVE: {cve_id}")
         
         self.logger.info(f"CVE analysis completed: {cve_id}", extra={
             'custom_dimensions': {
@@ -599,9 +643,21 @@ class VulnerabilityAnalyzer:
         """Get vulnerable items and system details with comprehensive logging."""
         if 'third_party_entries' not in results:
             self.logger.warning("No third_party_entries found for vulnerable items query")
+            # Set required fields for consistent response structure
+            results['systems'] = []
+            results['systems_retrieved'] = 0
+            results['sample_only'] = False
             return results
         
         third_party_entries = results['third_party_entries']
+        
+        # Handle empty third_party_entries list
+        if not third_party_entries:
+            self.logger.info("Third party entries list is empty - no scan data available")
+            results['systems'] = []
+            results['systems_retrieved'] = 0
+            results['sample_only'] = False
+            return results
         
         self.logger.info("Starting vulnerable items retrieval", extra={
             'custom_dimensions': {
@@ -613,9 +669,21 @@ class VulnerabilityAnalyzer:
             }
         })
         
-        # Calculate totals
+        # Calculate totals and collect ServiceNow URLs
         total_active = sum(int(tp.get('count_active_vi', 0)) for tp in third_party_entries)
         total_all_time = sum(int(tp.get('total_vis', 0)) for tp in third_party_entries)
+        
+        # Generate ServiceNow URLs for each QID
+        servicenow_urls = []
+        for tp in third_party_entries:
+            qid = tp.get('id', '')
+            if qid and qid.startswith('QID-'):
+                source = tp.get('source', 'Unknown')
+                url = self.generate_servicenow_url(qid)
+                servicenow_urls.append({'qid': qid, 'source': source, 'url': url})
+        
+        if servicenow_urls:
+            results['servicenow_urls'] = servicenow_urls
         
         results['total_vulnerable_systems'] = total_active
         results['total_all_time'] = total_all_time
@@ -632,6 +700,10 @@ class VulnerabilityAnalyzer:
         
         if total_active == 0:
             self.logger.info("No active vulnerable systems found")
+            # Set required fields for consistent response structure
+            results['systems'] = []
+            results['systems_retrieved'] = 0
+            results['sample_only'] = False
             return results
         
         # Determine fetch limit
@@ -639,7 +711,7 @@ class VulnerabilityAnalyzer:
             limit_per_query = min(1000, total_active)
             sample_only = False
         else:
-            limit_per_query = 50
+            limit_per_query = 10
             sample_only = True
         
         self.logger.info("Fetch strategy determined", extra={

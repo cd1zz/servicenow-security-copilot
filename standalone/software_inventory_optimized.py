@@ -782,6 +782,9 @@ class SoftwareInventoryAnalyzer:
         remaining = len([s for s in sorted_software if sum(v['count'] for v in s[1].values()) > 0]) - shown_count
         if remaining > 0:
             print(f"\n   ... and {remaining} more products")
+        
+        # Export tip
+        print(f"\n💾 Use --export flag to save results to CSV and JSON files")
     
     def display_software_results(self, results: Dict):
         """Display software name search results."""
@@ -819,6 +822,9 @@ class SoftwareInventoryAnalyzer:
                 print(f"   Sample Hosts ({min(5, len(details['hosts']))} of {len(details['hosts'])}):")
                 for host in details['hosts'][:5]:
                     print(f"      • {host['name']} ({host['ip']}) - {host['os']}")
+        
+        # Export tip
+        print(f"\n💾 Use --export flag to save results to CSV and JSON files")
     
     def export_results(self, results: Dict, filename_prefix: str = "software_inventory"):
         """Export results to CSV and JSON files."""
