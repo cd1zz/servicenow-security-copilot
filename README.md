@@ -5,9 +5,10 @@ A comprehensive security analysis toolkit for ServiceNow environments, providing
 ## 🎯 Overview
 
 This toolkit helps security teams:
-- **Analyze CVE vulnerabilities** - Get accurate counts of vulnerable systems and identify affected hosts
+- **Analyze vulnerabilities** - Query both CVEs and Qualys QIDs to get accurate counts of vulnerable systems
 - **Track software inventory** - Query installed software by vendor or name with performance-optimized enumeration
-- **Assess security impact** - Quickly determine the scope of vulnerabilities in your environment
+- **Direct ServiceNow integration** - Generate clickable URLs to view vulnerabilities directly in ServiceNow
+- **Scanner integration** - Works with Qualys, Tenable, and other vulnerability scanners via ServiceNow's third-party entries
 - **Automate security workflows** - Use standalone scripts or deploy as serverless APIs
 
 ## 📁 Project Structure
@@ -38,6 +39,11 @@ cd standalone/
 # Analyze a CVE
 python3 servicenow_cve_analyzer.py CVE-2024-1234
 
+# Analyze a Qualys QID
+python3 servicenow_cve_analyzer.py QID-92307
+# Or just the numeric ID
+python3 servicenow_cve_analyzer.py 92307
+
 # Search software inventory
 python3 software_inventory.py --software "Windows*"
 python3 software_inventory.py --manufacturer "Microsoft"
@@ -55,39 +61,58 @@ cd function-app/
 # Run locally
 func start
 
-# Test the API
-curl -X POST http://localhost:7071/api/software-inventory \
+# Test vulnerability analysis
+curl -X POST http://localhost:7071/api/analyze-vulnerability \
   -H "Content-Type: application/json" \
-  -d '{"search_type": "software", "software_name": "Office"}'
+  -H "X-API-Key: your-api-key" \
+  -d '{"vuln_id": "QID-92307", "fetch_all_details": false}'
 ```
 
 [Full Function App Documentation →](function-app/README.md)
 
+## 📋 Example Output
+
+When analyzing a vulnerability, you'll receive:
+```json
+{
+  "vuln_id": "QID-92307",
+  "total_vulnerable_systems": 142,
+  "servicenow_url": "https://your-instance.service-now.com/now/nav/ui/classic/params/target/...",
+  "systems": [
+    {"name": "SERVER01", "ip_address": "10.0.1.5", "assignment_group": "Windows Team"},
+    {"name": "SERVER02", "ip_address": "10.0.1.6", "assignment_group": "Linux Team"}
+  ]
+}
+```
+
 ## 🔑 Key Features
 
 ### Vulnerability Analysis
-- **Accurate counts** - Shows both currently vulnerable and historically affected systems
-- **System details** - Lists affected hosts with names, IPs, and vulnerability status
-- **Batch processing** - Analyze multiple CVEs simultaneously
-- **Export options** - Generate CSV, JSON, and text reports
+- **Multiple sources** - Supports both CVE (NVD) and QID (Qualys) vulnerability identifiers
+- **Accurate counts** - Shows currently vulnerable systems (sample of 10 for performance)
+- **Direct links** - Generates ServiceNow URLs to view vulnerability details in your instance
+- **Batch processing** - Analyze multiple CVEs/QIDs simultaneously
+- **Export options** - Generate CSV, JSON, and text reports with ServiceNow URLs included
+- **Scanner integration** - Leverages ServiceNow's third-party vulnerability entries from Qualys, Tenable, etc.
 
-### Software Inventory
+### Software Inventory  
 - **Wildcard search** - Use patterns like `*Office`, `Windows*`, `*Server*`
-- **Performance optimized** - 87x faster queries with intelligent host sampling
-- **Full counts preserved** - Always shows total installations regardless of sampling
+- **Performance optimized** - Up to 400x faster with intelligent sampling
+- **Accurate counts** - Always shows total installations regardless of sampling
 - **Flexible modes**:
-  - Balanced (default): Full counts + 25 sample hosts
-  - Fast: Counts only, no host details
+  - Balanced: Full counts + 25 sample hosts
+  - Fast: Counts only, no host details  
   - Full: Up to 100 hosts per version
 
 ## ⚙️ Prerequisites
 
 ### For Both Options
-- ServiceNow instance with appropriate modules:
-  - Vulnerability Response (for CVE analysis)
-  - Software Asset Management (for inventory)
-- OAuth2 credentials for ServiceNow API access
-- Network access to ServiceNow instance
+- ServiceNow instance with:
+  - Vulnerability Response module
+  - Software Asset Management module
+  - Third-party vulnerability data (Qualys/Tenable integration)
+- OAuth2 credentials with appropriate permissions
+- Network access to ServiceNow APIs
 
 ### Standalone Scripts
 - Python 3.6+
@@ -139,20 +164,20 @@ Create `function-app/local.settings.json`:
 }
 ```
 
-## 📊 Performance Optimization
+## 📊 Performance & Integration
 
-The software inventory tools are optimized for large-scale environments:
+### Qualys/Scanner Integration
+The toolkit leverages ServiceNow's built-in integration with vulnerability scanners:
+- **QID Support** - Query Qualys vulnerability IDs directly (e.g., QID-92307)
+- **CVE Mapping** - Automatically finds associated QIDs for CVE queries
+- **Scanner Sources** - Works with data from Qualys, Tenable, Rapid7, etc.
+- **Direct Links** - Generate clickable URLs to ServiceNow vulnerability views
 
-| Query Type | Traditional Approach | Our Approach | Improvement |
-|------------|---------------------|--------------|-------------|
-| 2,173 installations | 2,173 API calls | 25 API calls | **87x faster** |
-| 10,000 installations | 10,000 API calls | 25 API calls | **400x faster** |
-
-This is achieved through:
-- Intelligent host sampling (configurable limit)
-- Batch API queries for host details
-- Caching of frequently accessed data
-- Parallel processing where possible
+### Performance Optimization
+Both vulnerability and software queries are optimized:
+- **Smart sampling** - Returns 10 vulnerable systems for quick assessment
+- **Batch processing** - Analyze multiple vulnerabilities in parallel
+- **Intelligent caching** - Reduces redundant API calls by up to 400x
 
 ## 🔒 Security Considerations
 
@@ -164,16 +189,15 @@ This is achieved through:
 
 ### Required ServiceNow Roles
 
-- **Vulnerability analysis**: `sn_vul_read` or `sn_vul_admin`
-- **Software inventory (optimal)**: `sam_user` or `asset`
-- **Software inventory (basic)**: Read access to CMDB
+- **Vulnerability analysis**: `sn_vul_read` (minimum) or `sn_vul_admin`
+- **Software inventory**: `sam_user` or `asset` role
+- **CMDB access**: Read permissions for configuration items
 
 ## 📚 Documentation
 
 - [Standalone Scripts Documentation](standalone/README.md)
-  - [Software Inventory Guide](standalone/SOFTWARE_INVENTORY_README.md)
 - [Azure Functions Documentation](function-app/README.md)
-  - [API Documentation](function-app/API_DOCUMENTATION.md)
+- [API Reference](function-app/API_DOCUMENTATION.md)
 
 ## 🤝 Contributing
 
@@ -206,4 +230,4 @@ For issues, questions, or feature requests:
 
 ---
 
-**Built with ❤️ for ServiceNow security teams**
+**Built for ServiceNow security teams managing Qualys and other vulnerability scanners**
