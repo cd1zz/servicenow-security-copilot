@@ -274,13 +274,17 @@ class ServiceNowVulnerabilityAnalyzer:
         print(f"\nRetrieving system details...")
         
         # Decide how many details to fetch
-        if fetch_all_details or total_active <= 100:
-            # Fetch all if requested or if count is reasonable
+        if fetch_all_details:
+            # User explicitly wants all details
             limit_per_query = min(1000, total_active)
             sample_only = False
+        elif total_active <= 5:
+            # 5 or fewer systems - fetch and show all
+            limit_per_query = total_active
+            sample_only = False
         else:
-            # Fetch sample for performance
-            limit_per_query = 10
+            # More than 5 systems - fetch sample
+            limit_per_query = 50  # Fetch more from API to ensure we get enough
             sample_only = True
         
         systems = []
@@ -295,7 +299,11 @@ class ServiceNowVulnerabilityAnalyzer:
             # Add active status filter
             if not include_patched:
                 query_parts.append('active=true')
-                query_parts.append('state=1')  # Only Open state vulnerabilities
+                # IMPORTANT: ServiceNow state values vary by instance
+                # Common values: state=1 (open), state=11 (open/active), state=3 (closed)
+                # We use state!=3 to include all open states, not just state=1
+                # This ensures compatibility with instances using state=11 for open items
+                query_parts.append('state!=3')  # Exclude closed, include all open states
             
             # Add confirmation state filter
             if confirmation_state and confirmation_state in confirmation_map:
@@ -355,8 +363,8 @@ class ServiceNowVulnerabilityAnalyzer:
                                     'assignment_group': assignment_group_name
                                 })
                             
-                            # Stop if we have enough for sample
-                            if sample_only and len(systems) >= limit_per_query:
+                            # Stop after getting 5 systems for sample mode
+                            if sample_only and len(systems) >= 5:
                                 break
         
         results['systems'] = systems
@@ -417,14 +425,15 @@ class ServiceNowVulnerabilityAnalyzer:
         
         if systems:
             if sample_only:
-                print(f"\n📋 SAMPLE SYSTEMS (showing {min(10, len(systems))} of {total}):")
+                print(f"\n📋 SAMPLE SYSTEMS (showing {min(5, len(systems))} of {total}):")
             else:
-                print(f"\n📋 VULNERABLE SYSTEMS (showing {min(10, len(systems))} of {retrieved}):")
+                print(f"\n📋 VULNERABLE SYSTEMS (showing {len(systems)} of {retrieved}):")
             
             print("-" * 60)
             
-            # Show first 10 systems
-            for i, system in enumerate(sorted(systems, key=lambda x: x['name'])[:10], 1):
+            # Show first 5 systems (or all if fewer)
+            display_limit = 5 if sample_only else len(systems)
+            for i, system in enumerate(sorted(systems, key=lambda x: x['name'])[:display_limit], 1):
                 print(f"\n{i}. {system['name']}")
                 print(f"   VIT: {system.get('vi_number', 'N/A')}")
                 print(f"   IP: {system['ip_address']}")

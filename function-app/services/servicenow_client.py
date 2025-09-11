@@ -706,18 +706,28 @@ class VulnerabilityAnalyzer:
             results['sample_only'] = False
             return results
         
-        # Determine fetch limit
-        if fetch_all_details or total_active <= 100:
+        # Determine fetch limit and sample strategy
+        if fetch_all_details:
+            # User explicitly wants all details
             limit_per_query = min(1000, total_active)
+            max_systems_to_return = limit_per_query
+            sample_only = False
+        elif total_active <= 5:
+            # 5 or fewer systems - return all
+            limit_per_query = total_active
+            max_systems_to_return = total_active
             sample_only = False
         else:
-            limit_per_query = 10
+            # More than 5 systems - return sample of 5
+            limit_per_query = 50  # Fetch more from API to ensure we get enough
+            max_systems_to_return = 5  # But only return 5 to user
             sample_only = True
         
         self.logger.info("Fetch strategy determined", extra={
             'custom_dimensions': {
                 'vuln_id': results['vuln_id'],
                 'limit_per_query': limit_per_query,
+                'max_systems_to_return': max_systems_to_return if sample_only else 'all',
                 'sample_only': sample_only,
                 'fetch_all_details': fetch_all_details,
                 'total_active': total_active
@@ -749,7 +759,11 @@ class VulnerabilityAnalyzer:
             
             if not include_patched:
                 query_parts.append('active=true')
-                query_parts.append('state=1')  # Only Open state vulnerabilities
+                # IMPORTANT: ServiceNow state values vary by instance
+                # Common values: state=1 (open), state=11 (open/active), state=3 (closed)
+                # We use state!=3 to include all open states, not just state=1
+                # This ensures compatibility with instances using state=11 for open items
+                query_parts.append('state!=3')  # Exclude closed, include all open states
             
             # Add confirmation state filter
             if confirmation_state and confirmation_state in confirmation_map:
@@ -831,8 +845,10 @@ class VulnerabilityAnalyzer:
                                 if systems_processed % 10 == 0:
                                     self.logger.debug(f"Processed {systems_processed} systems so far...")
                             
-                            if sample_only and len(systems) >= limit_per_query:
-                                self.logger.info("Sample limit reached, stopping system retrieval")
+                            # Stop after getting 5 systems for sample mode (or all if fewer than 5 total)
+                            target_count = 5 if sample_only else 1000
+                            if len(systems) >= target_count:
+                                self.logger.info(f"Target of {target_count} systems reached, stopping retrieval")
                                 break
                 
                 self.logger.info(f"Completed processing third-party entry {query_count}", extra={
