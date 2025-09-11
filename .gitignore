@@ -3,6 +3,8 @@ config.json
 config.yaml
 config.yml
 *.config
+CLAUDE.md
+local.settings.json
 
 # Credentials and secrets
 .env
