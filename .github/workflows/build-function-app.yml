@@ -15,6 +15,10 @@ on:
 env:
   PYTHON_VERSION: '3.11'
 
+permissions:
+  contents: write  # Required for creating releases
+  pull-requests: write  # Required for commenting on PRs
+
 jobs:
   build:
     name: Build Function App Package
