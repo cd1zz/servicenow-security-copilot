@@ -27,6 +27,8 @@ class ServiceNowVulnerabilityAnalyzer:
         self.password = password
         self.access_token = None
         self.token_expiry = 0
+        # Extract instance name from URL for generating direct links
+        self.instance_name = self.instance_url.replace('https://', '').replace('.service-now.com', '')
         
     def get_oauth_token(self) -> str:
         """Get OAuth2 access token."""
@@ -57,6 +59,27 @@ class ServiceNowVulnerabilityAnalyzer:
         self.token_expiry = time.time() + token_data.get('expires_in', 1800) - 300
         
         return self.access_token
+    
+    def generate_servicenow_url(self, qid: str, state_filter: str = "!%3D3") -> str:
+        """
+        Generate a direct URL to ServiceNow vulnerability list for a specific QID.
+        
+        Args:
+            qid: The QID value (e.g., "QID-92307" or "92307")
+            state_filter: State filter for the URL (default: "!%3D3" meaning not closed)
+        
+        Returns:
+            Full URL to ServiceNow vulnerability list filtered by QID
+        """
+        # Ensure QID format
+        if not qid.startswith('QID-'):
+            qid = f'QID-{qid}'
+        
+        # Build the URL with proper encoding
+        base_url = f"https://{self.instance_name}.service-now.com/now/nav/ui/classic/params/target/"
+        query_part = f"sn_vul_vulnerable_item_list.do%3Fsysparm_query%3DGOTOvulnerability.id%253E%253D{qid}%255Estate{state_filter}%26sysparm_first_row%3D1%26sysparm_view%3D"
+        
+        return base_url + query_part
     
     def api_request(self, endpoint: str, params: Optional[Dict] = None) -> Optional[Dict]:
         """Make authenticated API request."""
@@ -147,6 +170,9 @@ class ServiceNowVulnerabilityAnalyzer:
             if cves_list:
                 results['associated_cves'] = cves_list
             
+            # Generate ServiceNow URL for this QID
+            results['servicenow_url'] = self.generate_servicenow_url(qid_number)
+            
             print(f"✅ Found QID - Source: {results['source']} - CVSS Score: {results['cvss_score']}")
             
         else:
@@ -185,6 +211,10 @@ class ServiceNowVulnerabilityAnalyzer:
             
             if not third_party_result or not third_party_result.get('result'):
                 print("No vulnerability scan data found")
+                # Set required fields for display_results
+                results['systems'] = []
+                results['systems_retrieved'] = 0
+                results['sample_only'] = False
                 return results
             
             third_party_entries = third_party_result['result']
@@ -214,17 +244,31 @@ class ServiceNowVulnerabilityAnalyzer:
         if confirmation_state:
             print(f"   ⚠️  Note: Filtering by confirmation state: {confirmation_state}")
         
-        # Show breakdown by source
+        # Show breakdown by source and collect ServiceNow URLs
+        servicenow_urls = []
         for tp in third_party_entries:
             source = tp.get('source', 'Unknown')
             qid = tp.get('id', 'N/A')
             active = int(tp.get('count_active_vi', 0))
             total = int(tp.get('total_vis', 0))
             print(f"   • {source} {qid}: {active} active / {total} total")
+            
+            # Generate ServiceNow URL for each QID
+            if qid != 'N/A':
+                url = self.generate_servicenow_url(qid)
+                servicenow_urls.append({'qid': qid, 'source': source, 'url': url})
+        
+        # Add URLs to results
+        if servicenow_urls:
+            results['servicenow_urls'] = servicenow_urls
         
         # Step 3: Get system details (full or sample based on count and preference)
         if total_active == 0:
             print("No vulnerable systems found")
+            # Set required fields for display_results
+            results['systems'] = []
+            results['systems_retrieved'] = 0
+            results['sample_only'] = False
             return results
         
         print(f"\nRetrieving system details...")
@@ -236,7 +280,7 @@ class ServiceNowVulnerabilityAnalyzer:
             sample_only = False
         else:
             # Fetch sample for performance
-            limit_per_query = 50
+            limit_per_query = 10
             sample_only = True
         
         systems = []
@@ -357,12 +401,22 @@ class ServiceNowVulnerabilityAnalyzer:
         if 'associated_cves' in results:
             print(f"Associated CVEs: {results['associated_cves']}")
         
+        # Display ServiceNow URLs
+        if 'servicenow_url' in results:
+            print(f"\n🔗 ServiceNow Direct Link:")
+            print(f"   {results['servicenow_url']}")
+        elif 'servicenow_urls' in results:
+            print(f"\n🔗 ServiceNow Direct Links:")
+            for url_info in results['servicenow_urls']:
+                print(f"   • {url_info['source']} {url_info['qid']}: {url_info['url']}")
+        
         # Show systems list
-        systems = results['systems']
-        retrieved = results['systems_retrieved']
+        systems = results.get('systems', [])
+        retrieved = results.get('systems_retrieved', 0)
+        sample_only = results.get('sample_only', False)
         
         if systems:
-            if results['sample_only']:
+            if sample_only:
                 print(f"\n📋 SAMPLE SYSTEMS (showing {min(10, len(systems))} of {total}):")
             else:
                 print(f"\n📋 VULNERABLE SYSTEMS (showing {min(10, len(systems))} of {retrieved}):")
@@ -376,21 +430,19 @@ class ServiceNowVulnerabilityAnalyzer:
                 print(f"   IP: {system['ip_address']}")
                 if system.get('assignment_group') and system['assignment_group'] != 'N/A':
                     print(f"   Assigned to: {system['assignment_group']}")
-                if system['description']:
+                if system.get('description'):
                     print(f"   Issue: {system['description'][:60]}")
             
             if len(systems) > 10:
-                print(f"\n... and {len(systems) - 10} more in export files")
+                print(f"\n... and {len(systems) - 10} more systems")
         
         # Summary message
-        if results['sample_only']:
+        if sample_only and retrieved > 0:
             print(f"\n💡 Retrieved details for {retrieved} systems (sample)")
             print(f"   Full enumeration would require fetching {total} records")
         
-        print(f"\n📁 Files exported:")
-        print(f"   • CSV with system list")
-        print(f"   • JSON with full details")
-        print(f"   • TXT summary report")
+        # Export tip
+        print(f"\n💾 Use --export flag to save results to CSV, JSON, and TXT files")
     
     def search_by_confirmation_status(self, confirmation_state: str, days: int = 14, fetch_all_details: bool = False) -> Dict:
         """
@@ -642,7 +694,8 @@ class ServiceNowVulnerabilityAnalyzer:
                     print(f"   Assigned to: {system['assignment_group']}")
                 print(f"   First Found: {system['first_found']}")
         
-        print(f"\n📁 Files will be exported with details")
+        # Export tip
+        print(f"\n💾 Use --export flag to save results to CSV, JSON, and TXT files")
     
     def export_status_search_results(self, results: Dict):
         """Export results from confirmation status search."""
@@ -701,11 +754,8 @@ class ServiceNowVulnerabilityAnalyzer:
                         cve_info = f" ({', '.join(vuln['cve_ids'][:2])})"
                     f.write(f"{i}. {vuln['id']}{cve_info} - {vuln['affected_systems']} systems\n")
         
-        print(f"\n✅ Exported files:")
-        print(f"   • {csv_file}")
-        print(f"   • {csv_file2}")
-        print(f"   • {json_file}")
-        print(f"   • {txt_file}")
+        # Return exported filenames for optional display
+        return [csv_file, csv_file2, json_file, txt_file]
     
     def generate_llm_output(self, results: Dict):
         """Generate structured output optimized for LLM analysis."""
@@ -1024,7 +1074,7 @@ class ServiceNowVulnerabilityAnalyzer:
         csv_file = f'{vuln_clean}_systems_{timestamp}.csv'
         with open(csv_file, 'w') as f:
             f.write('System Name,VIT Number,IP Address,Type,Status,Assignment Group,Issue\n')
-            for system in sorted(results['systems'], key=lambda x: x['name']):
+            for system in sorted(results.get('systems', []), key=lambda x: x['name']):
                 f.write(f'"{system["name"]}","{system.get("vi_number", "N/A")}",')
                 f.write(f'"{system["ip_address"]}","{system["type"]}",')
                 f.write(f'"{system["status"]}","{system.get("assignment_group", "N/A")}",')
@@ -1042,15 +1092,24 @@ class ServiceNowVulnerabilityAnalyzer:
             f.write(f"{'=' * 50}\n\n")
             f.write(f"{vuln_type}: {vuln_id}\n")
             f.write(f"Generated: {results['timestamp']}\n")
-            f.write(f"CVSS Score: {results['cvss_score']}\n\n")
+            f.write(f"CVSS Score: {results['cvss_score']}\n")
+            
+            # Add ServiceNow URLs to report
+            if 'servicenow_url' in results:
+                f.write(f"ServiceNow URL: {results['servicenow_url']}\n")
+            elif 'servicenow_urls' in results:
+                f.write(f"ServiceNow URLs:\n")
+                for url_info in results['servicenow_urls']:
+                    f.write(f"  • {url_info['source']} {url_info['qid']}: {url_info['url']}\n")
+            f.write("\n")
             if 'filtered_vulnerable_systems' in results:
                 f.write(f"TOTAL VULNERABLE SYSTEMS (Filtered - {results.get('confirmation_filter', 'all')}): {results['filtered_vulnerable_systems']}\n")
                 f.write(f"TOTAL VULNERABLE SYSTEMS (Unfiltered): {results['total_vulnerable_systems']}\n")
             else:
                 f.write(f"TOTAL VULNERABLE SYSTEMS: {results['total_vulnerable_systems']}\n")
-            f.write(f"Systems with details retrieved: {results['systems_retrieved']}\n\n")
+            f.write(f"Systems with details retrieved: {results.get('systems_retrieved', 0)}\n\n")
             
-            if results['systems']:
+            if results.get('systems'):
                 f.write(f"AFFECTED SYSTEMS:\n")
                 for i, system in enumerate(sorted(results['systems'], key=lambda x: x['name']), 1):
                     f.write(f"{i}. {system['name']} - {system['ip_address']}\n")
@@ -1077,10 +1136,8 @@ def main():
                        help='Number of days to look back for status search (default: 14)')
     parser.add_argument('--llm-output', action='store_true',
                        help='Generate LLM-friendly structured output for analysis')
-    parser.add_argument('--software-inventory', action='store_true',
-                       help='Search software inventory instead of vulnerabilities')
-    parser.add_argument('--manufacturer', help='Search by software manufacturer (e.g., "Palo Alto Networks")')
-    parser.add_argument('--software', help='Search by software name (e.g., "Cortex XDR")')
+    parser.add_argument('--export', action='store_true',
+                       help='Export results to CSV, JSON, and TXT files')
     
     args = parser.parse_args()
     
@@ -1100,30 +1157,6 @@ def main():
     with open(args.config, 'r') as f:
         config = json.load(f)
     
-    # Check if doing software inventory search
-    if args.software_inventory or args.manufacturer or args.software:
-        # Import and use software inventory analyzer
-        from software_inventory import SoftwareInventoryAnalyzer
-        
-        sw_analyzer = SoftwareInventoryAnalyzer(**config)
-        
-        if args.manufacturer:
-            results = sw_analyzer.search_by_manufacturer(args.manufacturer, not args.full)
-            sw_analyzer.display_manufacturer_results(results)
-            if results['total_packages'] > 0:
-                prefix = f"software_{args.manufacturer.replace(' ', '_').lower()}"
-                sw_analyzer.export_results(results, prefix)
-        elif args.software:
-            results = sw_analyzer.search_by_software_name(args.software, not args.full)
-            sw_analyzer.display_software_results(results)
-            if results['total_versions'] > 0:
-                prefix = f"software_{args.software.replace(' ', '_').lower()}"
-                sw_analyzer.export_results(results, prefix)
-        else:
-            print("❌ Error: --software-inventory requires either --manufacturer or --software")
-            parser.print_help()
-        sys.exit(0)
-    
     # Create analyzer
     analyzer = ServiceNowVulnerabilityAnalyzer(**config)
     
@@ -1139,7 +1172,11 @@ def main():
             # Standard human-readable output
             analyzer.display_status_search_results(results)
         
-        analyzer.export_status_search_results(results)
+        # Export if requested
+        if args.export:
+            analyzer.export_status_search_results(results)
+            print(f"\n📁 Files exported for status search")
+        
         sys.exit(0)
     
     # Validate that vuln_ids were provided for regular search
@@ -1169,9 +1206,13 @@ def main():
         # Display
         analyzer.display_results(results)
         
-        # Export
-        if results['found']:
+        # Export if requested
+        if args.export and results['found']:
             analyzer.export_results(results)
+            print(f"\n📁 Files exported:")
+            print(f"   • CSV with system list")
+            print(f"   • JSON with full details")
+            print(f"   • TXT summary report")
         
         print()
 

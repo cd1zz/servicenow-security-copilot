@@ -30,7 +30,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         "software_name": "Cortex XDR",          # if search_type is software
         "fetch_details": true,                  # optional, default true
         "limit": 100,                           # optional, max results
-        "max_hosts_per_version": 25             # optional, default 25, max hosts to fetch per version
+        "max_hosts_per_version": 25,            # optional, default 25, max hosts to fetch per version
+        "performance_mode": "balanced"          # optional: "fast", "balanced", or "full" (default: "balanced")
     }
     """
     # Start request logging
@@ -91,6 +92,33 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         fetch_details = req_body.get('fetch_details', True)
         limit = min(req_body.get('limit', 1000), 1000)  # Cap at 1000
         max_hosts_per_version = min(req_body.get('max_hosts_per_version', 25), 100)  # Default 25, max 100
+        performance_mode = req_body.get('performance_mode', 'balanced')
+        
+        # Validate and adjust parameters based on performance mode
+        valid_modes = ['fast', 'balanced', 'full']
+        if performance_mode not in valid_modes:
+            function_logger.log_warning("Invalid performance_mode, defaulting to balanced", {
+                'provided_mode': performance_mode,
+                'valid_modes': valid_modes
+            })
+            performance_mode = 'balanced'
+        
+        # Adjust settings based on performance mode
+        if performance_mode == 'fast':
+            # Fast mode: counts only, no host details
+            fetch_details = False
+            max_hosts_per_version = 0
+            function_logger.log_info("Using FAST mode: counts only, no host details")
+        elif performance_mode == 'full':
+            # Full mode: get all details (up to limit)
+            fetch_details = True
+            max_hosts_per_version = min(100, limit)  # Get more hosts per version
+            function_logger.log_info("Using FULL mode: fetching all available details")
+        else:
+            # Balanced mode: limited sampling (default)
+            fetch_details = True
+            max_hosts_per_version = min(max_hosts_per_version, 25)
+            function_logger.log_info("Using BALANCED mode: limited sampling for performance")
         
         # Validate search criteria
         if search_type == 'manufacturer' and not manufacturer:
@@ -119,7 +147,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             'software_name': software_name,
             'fetch_details': fetch_details,
             'limit': limit,
-            'max_hosts_per_version': max_hosts_per_version
+            'max_hosts_per_version': max_hosts_per_version,
+            'performance_mode': performance_mode
         })
         
         # Initialize ServiceNow client

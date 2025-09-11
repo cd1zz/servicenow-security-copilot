@@ -733,6 +733,9 @@ class SoftwareInventoryAnalyzer:
         remaining = len([s for s in sorted_software if sum(v['count'] for v in s[1].values()) > 0]) - shown_count
         if remaining > 0:
             print(f"\n   ... and {remaining} more products")
+        
+        # Export tip
+        print(f"\n💾 Use --export flag to save results to CSV and JSON files")
     
     def display_software_results(self, results: Dict):
         """Display software name search results."""
@@ -785,6 +788,9 @@ class SoftwareInventoryAnalyzer:
                     remaining = actual_install_count - 5
                     if remaining > 0:
                         print(f"      ... and {remaining} more systems")
+        
+        # Export tip
+        print(f"\n💾 Use --export flag to save results to CSV and JSON files")
     
     def export_results(self, results: Dict, filename_prefix: str = "software_inventory"):
         """Export results to CSV and JSON files."""
