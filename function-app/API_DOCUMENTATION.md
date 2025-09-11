@@ -4,6 +4,15 @@
 
 This API provides programmatic access to ServiceNow vulnerability data and software inventory information through Azure Functions endpoints.
 
+### ⚠️ Important: ServiceNow Vulnerability States
+
+ServiceNow vulnerability items use different state values across instances:
+- **State=1**: Traditional "Open" (rarely used)  
+- **State=11**: Common "Open/Active" (frequently used)
+- **State=3**: "Closed/Resolved" (universal)
+
+**Our Implementation**: We use `state!=3` (exclude closed) rather than `state=1` to ensure compatibility across all ServiceNow instances.
+
 ## OpenAPI Specification
 
 The complete API specification is available in:

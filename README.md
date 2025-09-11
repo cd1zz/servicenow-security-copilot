@@ -89,7 +89,7 @@ When analyzing a vulnerability, you'll receive:
 
 ### Vulnerability Analysis
 - **Multiple sources** - Supports both CVE (NVD) and QID (Qualys) vulnerability identifiers
-- **Accurate counts** - Shows currently vulnerable systems (sample of 10 for performance)
+- **Smart sampling** - Shows all systems if ≤5 affected, otherwise sample of 5 for performance
 - **Direct links** - Generates ServiceNow URLs to view vulnerability details in your instance
 - **Batch processing** - Analyze multiple CVEs/QIDs simultaneously
 - **Export options** - Generate CSV, JSON, and text reports with ServiceNow URLs included
@@ -212,6 +212,20 @@ Contributions are welcome! Please:
 ## 📝 License
 
 MIT License - See [LICENSE](LICENSE) file for details
+
+## 🔧 Troubleshooting
+
+### Getting 0 Systems When You Know Vulnerabilities Exist?
+
+This is often due to ServiceNow state value differences:
+- Some instances use `state=1` for open vulnerabilities
+- Others use `state=11` for open/active vulnerabilities  
+- We use `state!=3` to include all non-closed states
+
+If you're still getting 0 results:
+1. Check the logs for the actual API query being made
+2. Test without the `confirmation_state` parameter
+3. Verify the vulnerability exists in your ServiceNow instance
 
 ## ⚠️ Disclaimer
 
