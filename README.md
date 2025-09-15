@@ -1,6 +1,6 @@
 # ServiceNow Security Copilot
 
-A comprehensive security analysis toolkit for ServiceNow environments, providing vulnerability assessment and software inventory capabilities through both standalone scripts and serverless Azure Functions.
+An integration for environments with ServiceNOW and Qualys for vulnerability managmeent.  This is designed to be used with Security Copilot to provide vulnerability assessment and software inventory capabilities through both standalone scripts and serverless Azure Functions.
 
 ## 🎯 Overview
 
